@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3-Phase SCADA Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{margin:0;font-family:Arial;background:#f4f7fb;}
+#sidebar{width:90px;height:100vh;position:fixed;background:#fff;border-right:1px solid #ddd;display:flex;flex-direction:column;align-items:center;padding-top:20px;}
+.nav-btn{border:none;background:none;margin:10px;cursor:pointer;color:#666;}
+.nav-btn.active{color:#2563eb;font-weight:bold;}
+#content{margin-left:100px;padding:20px;}
+
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;}
+.card{background:#fff;padding:15px;border-radius:10px;}
+
+.health-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px;}
+.health-item{background:#fff;padding:15px;border-radius:10px;}
+
+.status-box{padding:6px;border-radius:6px;margin-top:5px;}
+.normal{background:#dcfce7;color:#166534;}
+.warning{background:#fef9c3;color:#854d0e;}
+.alert{background:#fee2e2;color:#991b1b;}
+
+table{width:100%;background:#fff;border-collapse:collapse;}
+th,td{padding:10px;border-bottom:1px solid #ddd;text-align:center;}
+
+#popup{
+display:none;
+position:fixed;
+top:20px;
+right:20px;
+background:#fee2e2;
+padding:15px;
+border-radius:10px;
+box-shadow:0 5px 15px rgba(0,0,0,0.2);
+}
+</style>
+</head>
+
+<body>
+
+<div id="sidebar">
+<button class="nav-btn active" onclick="nav('dash',this)">DASH</button>
+<button class="nav-btn" onclick="nav('analytics',this)">ANLYT</button>
+<button class="nav-btn" onclick="nav('health',this)">HLTH</button>
+<button class="nav-btn" onclick="nav('logs',this)">LOGS</button>
+</div>
+
+<div id="content">
+
+<!-- DASH -->
+<div id="dash" class="page">
+<h2>Dashboard</h2>
+
+<div class="cards">
+<div class="card">V1: <span id="v1"></span></div>
+<div class="card">V2: <span id="v2"></span></div>
+<div class="card">V3: <span id="v3"></span></div>
+<div class="card">V Total: <span id="vt"></span></div>
+
+<div class="card">I1: <span id="i1"></span></div>
+<div class="card">I2: <span id="i2"></span></div>
+<div class="card">I3: <span id="i3"></span></div>
+
+<div class="card">P1: <span id="p1"></span></div>
+<div class="card">P2: <span id="p2"></span></div>
+<div class="card">P3: <span id="p3"></span></div>
+
+<div class="card">F1: <span id="f1"></span></div>
+<div class="card">F2: <span id="f2"></span></div>
+<div class="card">F3: <span id="f3"></span></div>
+
+<div class="card">PF: <span id="pf"></span></div>
+</div>
+
+<canvas id="mainChart"></canvas>
+</div>
+
+<!-- ANALYTICS -->
+<div id="analytics" class="page" style="display:none;">
+<h2>Analytics</h2>
+<select id="param" onchange="updateAnalytics()">
+<option value="v1">V1</option>
+<option value="v2">V2</option>
+<option value="v3">V3</option>
+<option value="i1">I1</option>
+<option value="i2">I2</option>
+<option value="i3">I3</option>
+<option value="p1">P1</option>
+<option value="p2">P2</option>
+<option value="p3">P3</option>
+</select>
+<canvas id="analyticsChart"></canvas>
+</div>
+
+<!-- HEALTH -->
+<div id="health" class="page" style="display:none;">
+<h2>System Health</h2>
+
+<h3>System Status</h3>
+<div id="systemStatus" class="status-box">Checking...</div>
+
+<div class="health-grid">
+<div class="health-item">
+<h3>Voltage</h3>
+<div id="val-v1"></div><div id="status-v1" class="status-box"></div>
+<div id="val-v2"></div><div id="status-v2" class="status-box"></div>
+<div id="val-v3"></div><div id="status-v3" class="status-box"></div>
+</div>
+
+<div class="health-item">
+<h3>Current</h3>
+<div id="val-i1"></div><div id="status-i1" class="status-box"></div>
+<div id="val-i2"></div><div id="status-i2" class="status-box"></div>
+<div id="val-i3"></div><div id="status-i3" class="status-box"></div>
+</div>
+
+<div class="health-item">
+<h3>Power</h3>
+<div id="val-p1"></div><div id="status-p1" class="status-box"></div>
+<div id="val-p2"></div><div id="status-p2" class="status-box"></div>
+<div id="val-p3"></div><div id="status-p3" class="status-box"></div>
+</div>
+
+<div class="health-item">
+<h3>Frequency</h3>
+<div id="val-f1"></div><div id="status-f1" class="status-box"></div>
+<div id="val-f2"></div><div id="status-f2" class="status-box"></div>
+<div id="val-f3"></div><div id="status-f3" class="status-box"></div>
+</div>
+
+<div class="health-item">
+<h3>Power Factor</h3>
+<div id="val-pf"></div><div id="status-pf" class="status-box"></div>
+</div>
+</div>
+
+<h3>Alerts</h3>
+<div id="alerts"></div>
+</div>
+
+<!-- LOGS -->
+<div id="logs" class="page" style="display:none;">
+<h2>Logs</h2>
+<table>
+<tr>
+<th>Time</th>
+<th>V1</th><th>V2</th><th>V3</th>
+<th>I1</th><th>I2</th><th>I3</th>
+<th>P1</th><th>P2</th><th>P3</th>
+<th>PF</th>
+</tr>
+<tbody id="logTable"></tbody>
+</table>
+</div>
+
+</div>
+
+<div id="popup"></div>
+
+<script>
+
+const URL="https://esp32connect-fcd0c-default-rtdb.asia-southeast1.firebasedatabase.app/energy.json";
+
+let logs=[];
+
+// ✅ HISTORY ADDED
+let history={
+v1:[],v2:[],v3:[],
+i1:[],i2:[],i3:[],
+p1:[],p2:[],p3:[],
+labels:[]
+};
+
+// NAV
+function nav(p,btn){
+document.querySelectorAll('.page').forEach(x=>x.style.display='none');
+document.getElementById(p).style.display='block';
+document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+}
+
+// SYSTEM STATUS
+function setSystemStatus(state){
+let el=document.getElementById("systemStatus");
+
+if(state==="off"){
+el.className="status-box alert";
+el.innerText="🔴 System OFF";
+}
+else if(state==="critical"){
+el.className="status-box alert";
+el.innerText="🚨 CRITICAL ALERT";
+}
+else if(state==="warning"){
+el.className="status-box warning";
+el.innerText="🟡 System WARNING";
+}
+else{
+el.className="status-box normal";
+el.innerText="🟢 System NORMAL";
+}
+}
+
+// ✅ ANALYTICS CHART ADDED
+const analyticsChart=new Chart(document.getElementById('analyticsChart'),{
+type:'line',
+data:{
+labels:[],
+datasets:[{
+label:'Data',
+data:[],
+borderColor:'blue'
+}]
+}
+});
+
+// FETCH DATA
+async function fetchData(){
+try{
+const res=await fetch(URL);
+const d=await res.json();
+
+if(!d){
+setSystemStatus("off");
+return;
+}
+
+const now=new Date().toLocaleTimeString();
+
+let v1=d.PZEM1?.voltage || 0;
+let v2=d.PZEM2?.voltage || 0;
+let v3=d.PZEM3?.voltage || 0;
+
+let i1=d.PZEM1?.current || 0;
+let i2=d.PZEM2?.current || 0;
+let i3=d.PZEM3?.current || 0;
+
+let p1=d.PZEM1?.power || 0;
+let p2=d.PZEM2?.power || 0;
+let p3=d.PZEM3?.power || 0;
+
+let pf=0.95;
+
+// DASH
+document.getElementById("v1").innerText=v1;
+document.getElementById("v2").innerText=v2;
+document.getElementById("v3").innerText=v3;
+document.getElementById("vt").innerText=(v1+v2+v3).toFixed(1);
+
+document.getElementById("i1").innerText=i1;
+document.getElementById("i2").innerText=i2;
+document.getElementById("i3").innerText=i3;
+
+document.getElementById("p1").innerText=p1;
+document.getElementById("p2").innerText=p2;
+document.getElementById("p3").innerText=p3;
+
+document.getElementById("f1").innerText=50;
+document.getElementById("f2").innerText=50;
+document.getElementById("f3").innerText=50;
+
+document.getElementById("pf").innerText=pf;
+
+// ✅ STORE HISTORY
+history.labels.push(now);
+history.v1.push(v1);
+history.v2.push(v2);
+history.v3.push(v3);
+history.i1.push(i1);
+history.i2.push(i2);
+history.i3.push(i3);
+history.p1.push(p1);
+history.p2.push(p2);
+history.p3.push(p3);
+
+if(history.labels.length>20){
+history.labels.shift();
+Object.keys(history).forEach(k=>{
+if(k!=="labels") history[k].shift();
+});
+}
+
+// HEALTH
+checkHealth(v1,v2,v3,i1,i2,i3,p1,p2,p3,pf);
+
+// LOGS
+updateLogs({v1,v2,v3,i1,i2,i3,p1,p2,p3,pf},now);
+
+// ✅ UPDATE ANALYTICS
+updateAnalytics();
+
+}catch(err){
+setSystemStatus("off");
+}
+}
+
+// ✅ ANALYTICS FUNCTION
+function updateAnalytics(){
+let param=document.getElementById("param").value;
+
+analyticsChart.data.labels=history.labels;
+analyticsChart.data.datasets[0].data=history[param];
+analyticsChart.data.datasets[0].label=param.toUpperCase();
+
+analyticsChart.update();
+}
+
+// HEALTH CHECK (same as before)
+function checkHealth(v1,v2,v3,i1,i2,i3,p1,p2,p3,pf){
+
+let alerts=[];
+let critical=false;
+let warning=false;
+
+function set(val,min,max,critMin,critMax,id){
+let valEl=document.getElementById("val-"+id);
+let stat=document.getElementById("status-"+id);
+
+valEl.innerText=id.toUpperCase()+": "+val;
+
+if(val<critMin || val>critMax){
+stat.className="status-box alert";
+stat.innerText="CRITICAL";
+alerts.push("🚨 "+id.toUpperCase()+" CRITICAL");
+critical=true;
+}
+else if(val<min || val>max){
+stat.className="status-box warning";
+stat.innerText="WARNING";
+alerts.push("⚠️ "+id.toUpperCase()+" WARNING");
+warning=true;
+}
+else{
+stat.className="status-box normal";
+stat.innerText="NORMAL";
+}
+}
+
+// LIMITS
+set(v1,220,250,200,260,"v1");
+set(v2,220,250,200,260,"v2");
+set(v3,220,250,200,260,"v3");
+
+set(i1,0,20,0,30,"i1");
+set(i2,0,20,0,30,"i2");
+set(i3,0,20,0,30,"i3");
+
+set(p1,0,2000,0,3000,"p1");
+set(p2,0,2000,0,3000,"p2");
+set(p3,0,2000,0,3000,"p3");
+
+set(50,49,51,48,52,"f1");
+set(50,49,51,48,52,"f2");
+set(50,49,51,48,52,"f3");
+
+set(pf,0.8,1,0.6,1,"pf");
+
+// SYSTEM STATUS
+if(critical){
+setSystemStatus("critical");
+}
+else if(warning){
+setSystemStatus("warning");
+}
+else{
+setSystemStatus("normal");
+}
+
+// ALERT DISPLAY
+document.getElementById("alerts").innerHTML=
+alerts.length?alerts.join("<br>"):"No alerts";
+
+// POPUP
+if(alerts.length){
+let pop=document.getElementById("popup");
+pop.innerText=alerts.join(", ");
+pop.style.display="block";
+setTimeout(()=>pop.style.display="none",3000);
+}
+}
+
+// LOGS
+function updateLogs(d,time){
+logs.unshift({time,...d});
+if(logs.length>10) logs.pop();
+
+logTable.innerHTML=logs.map(l=>`
+<tr>
+<td>${l.time}</td>
+<td>${l.v1}</td><td>${l.v2}</td><td>${l.v3}</td>
+<td>${l.i1}</td><td>${l.i2}</td><td>${l.i3}</td>
+<td>${l.p1}</td><td>${l.p2}</td><td>${l.p3}</td>
+<td>${l.pf}</td>
+</tr>`).join("");
+}
+
+setInterval(fetchData,2000);
+
+</script>
+
+</body>
+</html>
