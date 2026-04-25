@@ -1,0 +1,118 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <PZEM004Tv30.h>
+
+// ---------------- WIFI ----------------
+const char* ssid = "Pritam 4G";
+const char* password = "9204579352";
+
+// ---------------- FIREBASE ----------------
+String firebaseURL = "https://esp32connect-fcd0c-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+// -------- PZEM SETUP --------
+HardwareSerial pzemSerial1(2);
+PZEM004Tv30 pzem1(pzemSerial1, 16, 17);
+
+HardwareSerial pzemSerial2(1);
+PZEM004Tv30 pzem2(pzemSerial2, 4, 5);
+
+// ⚠️ Reusing UART2 with different pins (works, but keep in mind limitations)
+HardwareSerial pzemSerial3(2);
+PZEM004Tv30 pzem3(pzemSerial3, 25, 26);
+
+void setup() {
+  Serial.begin(115200);
+
+  pzemSerial1.begin(9600, SERIAL_8N1, 16, 17);
+  pzemSerial2.begin(9600, SERIAL_8N1, 4, 5);
+  pzemSerial3.begin(9600, SERIAL_8N1, 25, 26);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Connected!");
+}
+
+void loop() {
+
+  // -------- READ VALUES --------
+  float v1 = isnan(pzem1.voltage()) ? 0 : pzem1.voltage();
+  float i1 = isnan(pzem1.current()) ? 0 : pzem1.current();
+  float p1 = isnan(pzem1.power())   ? 0 : pzem1.power();
+  float e1 = isnan(pzem1.energy())  ? 0 : pzem1.energy();
+
+  float v2 = isnan(pzem2.voltage()) ? 0 : pzem2.voltage();
+  float i2 = isnan(pzem2.current()) ? 0 : pzem2.current();
+  float p2 = isnan(pzem2.power())   ? 0 : pzem2.power();
+  float e2 = isnan(pzem2.energy())  ? 0 : pzem2.energy();
+
+  float v3 = isnan(pzem3.voltage()) ? 0 : pzem3.voltage();
+  float i3 = isnan(pzem3.current()) ? 0 : pzem3.current();
+  float p3 = isnan(pzem3.power())   ? 0 : pzem3.power();
+  float e3 = isnan(pzem3.energy())  ? 0 : pzem3.energy();
+
+  // -------- TOTALS --------
+  float totalVoltage = v1 + v2 + v3;
+  float totalPower   = p1 + p2 + p3;
+  float totalEnergy  = e1 + e2 + e3;
+
+  // -------- PRINT DEBUG --------
+  Serial.println("Sending Data to Firebase...");
+  Serial.print("V1: "); Serial.print(v1); Serial.print("  ");
+  Serial.print("V2: "); Serial.print(v2); Serial.print("  ");
+  Serial.print("V3: "); Serial.println(v3);
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient http;
+
+    String url = firebaseURL + "/energy.json";
+
+    // JSON payload
+    String jsonData = "{";
+
+    // PZEM1
+    jsonData += "\"PZEM1\":{\"voltage\":" + String(v1) +
+                ",\"current\":" + String(i1) +
+                ",\"power\":" + String(p1) +
+                ",\"energy\":" + String(e1) + "},";
+
+    // PZEM2
+    jsonData += "\"PZEM2\":{\"voltage\":" + String(v2) +
+                ",\"current\":" + String(i2) +
+                ",\"power\":" + String(p2) +
+                ",\"energy\":" + String(e2) + "},";
+
+    // PZEM3
+    jsonData += "\"PZEM3\":{\"voltage\":" + String(v3) +
+                ",\"current\":" + String(i3) +
+                ",\"power\":" + String(p3) +
+                ",\"energy\":" + String(e3) + "},";
+
+    // TOTAL
+    jsonData += "\"TOTAL\":{\"voltage\":" + String(totalVoltage) +
+                ",\"power\":" + String(totalPower) +
+                ",\"energy\":" + String(totalEnergy) + "}";
+
+    jsonData += "}";
+
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+
+    int httpResponseCode = http.PATCH(jsonData);
+
+    Serial.print("Response Code: ");
+    Serial.println(httpResponseCode);
+
+    http.end();
+  }
+
+  Serial.println("------------------------------\n");
+
+  delay(5000);
+}
